@@ -46,10 +46,15 @@ app.post("/identify", async (req: Request, res: Response) => {
 
 	if (!phoneNumber && !email) {
 		console.log('1');
-		return res.send("phone number and email cannot be NULL");
+		return res.status(400).send("phone number and email cannot be NULL");
 	} else if (phoneNumber && email) {
 		console.log('2');
-		linkPrecedence = "primary";
+		if(await checkIfalreadyExist(email, phoneNumber)) {
+			const data = await fetchUsers(email, phoneNumber);
+			console.log("final data:", data);
+			res.status(200).send(data);
+			return
+		}
 	} else if (email && !phoneNumber) {
 		console.log('3');
 		const sql = `
@@ -66,7 +71,17 @@ app.post("/identify", async (req: Request, res: Response) => {
 
 	} else if (phoneNumber && !email) {
 		console.log('4');
-		linkPrecedence = "secondary";
+		const sql = `
+	  SELECT * FROM users WHERE phoneNumber = ? AND email is null;
+	`;
+		const [rows] = await connection.execute<Contact[]>(sql, [phoneNumber]);
+		if (!rows.length) {
+			await fetchByPhonenumber(phoneNumber);
+		}
+		const data = await fetchUsers(email, phoneNumber);
+		console.log("final data:", data);
+		res.status(200).send(data);
+		return
 	}
 
 	// 	let sql = `
@@ -96,11 +111,30 @@ app.post("/identify", async (req: Request, res: Response) => {
 });
 
 async function fetchPrimaryContact(email?: string, phoneNumber?: string) {
-	const sql = `
+	try {
+		const sql = `
 	  SELECT * FROM users WHERE linkPrecedence = ? AND (email = ? OR phoneNumber = ?);
 	`;
-	const [rows] = await connection.execute<Contact[]>(sql, [precedencePrimary, email, phoneNumber]);
-	return rows;
+		const params: any[] = ['primary'];
+		if (email) {
+			params.push(email);
+		} else {
+			params.push(null);
+		}
+		if (phoneNumber) {
+			params.push(phoneNumber);
+		} else {
+			params.push(null);
+		}
+		const [rows] = await connection.execute<Contact[]>(sql, params);
+		console.log("Executing SQL:", sql);
+		console.log("With parameters:", params);
+		console.log("rows:", rows);
+		return rows;
+	} catch (error) {
+		console.error("Error fetching primary contact:", error);
+		return [];
+	}
 }
 
 async function fetchSecondaryContact(id: number) {
@@ -125,7 +159,7 @@ async function fetchByEmail(email: string) {
 
 		await connection.execute(sql, [email, precedencePrimary,]);
 
-		console.log("new data inserted with adding linkedid");
+		console.log("new data inserted without adding linkedid");
 	} else {
 		const primaryContact = await fetchPrimaryContact(email);
 		const sql = `
@@ -135,18 +169,73 @@ async function fetchByEmail(email: string) {
 
 		await connection.execute(sql, [email, primaryContact[0].id, precedenceSecondary,]);
 
-		console.log("new data inserted");
+		console.log("new data inserted with linedid");
+	}
+}
+
+async function fetchByPhonenumber(phoneNumber: string) {
+	const sql = `
+	  SELECT * FROM users WHERE phoneNumber = ?;
+	`;
+	const [rows] = await connection.execute<Contact[]>(sql, [phoneNumber]);
+
+	if (!rows.length) {
+		const sql = `
+	  INSERT INTO users (phoneNumber, linkPrecedence, createdAt, updatedAt)
+	  VALUES (?, ?, NOW(), NOW());
+	`;
+
+		await connection.execute(sql, [phoneNumber, precedencePrimary,]);
+
+		console.log("new data inserted without adding linkedid");
+	} else {
+		const primaryContact = await fetchPrimaryContact('', phoneNumber);
+
+		
+		const sql = `
+	  INSERT INTO users (phoneNumber, linkedId, linkPrecedence, createdAt, updatedAt)
+	  VALUES (?, ?, ?, NOW(), NOW());
+	`;
+
+		await connection.execute(sql, [phoneNumber, primaryContact[0].id, precedenceSecondary,]);
+
+		console.log("new data inserted with linedid");
 	}
 }
 
 
-
 function formatResponse(primaryContact: any, secondaryContacts: any[]) {
+	// Create a Set for emails and phoneNumbers to eliminate duplicates
+	const emailSet = new Set<string>();
+	const phoneNumberSet = new Set<string>();
+
+	// Add primary contact's email and phoneNumber to the sets
+	if (primaryContact.email) {
+		emailSet.add(primaryContact.email);
+	}
+	if (primaryContact.phoneNumber) {
+		phoneNumberSet.add(primaryContact.phoneNumber);
+	}
+
+	// Add secondary contacts' emails and phoneNumbers to the sets
+	secondaryContacts.forEach(contact => {
+		if (contact.email) {
+			emailSet.add(contact.email);
+		}
+		if (contact.phoneNumber) {
+			phoneNumberSet.add(contact.phoneNumber);
+		}
+	});
+
+	// Convert the sets back to arrays
+	const emails = Array.from(emailSet);
+	const phoneNumbers = Array.from(phoneNumberSet);
+
 	return {
 		contact: {
-			primaryContatctId: primaryContact.id,
-			emails: [primaryContact.email, ...secondaryContacts.map(contact => contact.email)].filter(Boolean),
-			phoneNumbers: [primaryContact.phoneNumber, ...secondaryContacts.map(contact => contact.phoneNumber)].filter(Boolean),
+			primaryContactId: primaryContact.id,
+			emails,
+			phoneNumbers,
 			secondaryContactIds: secondaryContacts.map(contact => contact.id),
 		}
 	};
@@ -165,7 +254,19 @@ async function fetchUsers(email?: string, phoneNumber?: string) {
 	return resultSet;
 }
 
+async function checkIfalreadyExist(email?: string, phoneNumber?: string) {
+	const sql = `
+	  SELECT * FROM users WHERE email = ? AND phoneNumber = ?;
+	`;
+	const [rows] = await connection.execute<Contact[]>(sql, [email, phoneNumber]);
 
+	console.log("rows:", rows);
+	if (rows.length) {
+		return true;
+	}
+
+	return false;
+}
 
 app.get("/", (req: Request, res: Response) => {
 	res.send("Server is running");
