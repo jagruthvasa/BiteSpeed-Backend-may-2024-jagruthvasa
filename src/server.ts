@@ -204,17 +204,17 @@ async function fetchByPhonenumber(phoneNumber: string) {
 }
 
 
-function formatResponse(primaryContact: any, secondaryContacts: any[]) {
+function formatResponse(primaryContact: any[], secondaryContacts: any[]) {
 	// Create a Set for emails and phoneNumbers to eliminate duplicates
 	const emailSet = new Set<string>();
 	const phoneNumberSet = new Set<string>();
 
 	// Add primary contact's email and phoneNumber to the sets
-	if (primaryContact.email) {
-		emailSet.add(primaryContact.email);
+	if (primaryContact[0].email) {
+		emailSet.add(primaryContact[0].email);
 	}
-	if (primaryContact.phoneNumber) {
-		phoneNumberSet.add(primaryContact.phoneNumber);
+	if (primaryContact[0].phoneNumber) {
+		phoneNumberSet.add(primaryContact[0].phoneNumber);
 	}
 
 	// Add secondary contacts' emails and phoneNumbers to the sets
@@ -233,7 +233,7 @@ function formatResponse(primaryContact: any, secondaryContacts: any[]) {
 
 	return {
 		contact: {
-			primaryContactId: primaryContact.id,
+			primaryContactId: primaryContact[0].id,
 			emails,
 			phoneNumbers,
 			secondaryContactIds: secondaryContacts.map(contact => contact.id),
@@ -247,7 +247,7 @@ async function fetchUsers(email?: string, phoneNumber?: string) {
 	let secondaryData = await fetchSecondaryContact(primaryData[0].id);
 	console.log("secondaryData:", secondaryData);
 
-	let resultSet = formatResponse(getPrimaryContact(primaryData), secondaryData);
+	let resultSet = formatResponse(primaryData, secondaryData);
 
 	console.log("resultSet:", resultSet);
 
