@@ -1,6 +1,9 @@
 import express, { Request, Response } from "express";
 import bodyParser from "body-parser";
 import mysql, { Connection, RowDataPacket } from "mysql2/promise";
+import * as dotenv from 'dotenv';
+
+dotenv.config();
 
 const app = express();
 const PORT = 3000;
@@ -25,10 +28,10 @@ let connection: Connection;
 async function initializeDatabase() {
 	try {
 		connection = await mysql.createConnection({
-			host: "localhost",
-			user: "root",
-			password: "password",
-			database: "fluxkart",
+			host: process.env.MYSQL_ADDON_HOST,
+			user: process.env.MYSQL_ADDON_USER,
+			password: process.env.MYSQL_ADDON_PASSWORD,
+			database: process.env.MYSQL_ADDON_DB,
 		});
 		console.log("Database connected");
 	} catch (error) {
@@ -272,5 +275,5 @@ app.get("/", (req: Request, res: Response) => {
 
 app.listen(process.env.PORT || PORT, () => {
 	console.log(`Server is running on port ${PORT}`);
-	// initializeDatabase();
+	initializeDatabase();
 });
