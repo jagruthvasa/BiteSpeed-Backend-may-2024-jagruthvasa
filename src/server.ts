@@ -40,23 +40,22 @@ async function initializeDatabase() {
 app.post("/identify", async (req: Request, res: Response) => {
 	let phoneNumber = req.body.phoneNumber || null;
 	let email = req.body.email || null;
-	let linkPrecedence = null;
 
 	console.log("phoneNumber:", phoneNumber, "email:", email);
 
 	if (!phoneNumber && !email) {
-		console.log('1');
 		return res.status(400).send("phone number and email cannot be NULL");
 	} else if (phoneNumber && email) {
-		console.log('2');
-		if(await checkIfalreadyExist(email, phoneNumber)) {
-			const data = await fetchUsers(email, phoneNumber);
-			console.log("final data:", data);
-			res.status(200).send(data);
-			return
+		if (!await checkIfalreadyExist(email, phoneNumber)) {
+			await fetchByEmailPhoneNum(email, phoneNumber);
+
 		}
+		const data = await fetchUsers(email, phoneNumber);
+		console.log("final data:", data);
+		res.status(200).send(data);
+		return
+
 	} else if (email && !phoneNumber) {
-		console.log('3');
 		const sql = `
 	  SELECT * FROM users WHERE email = ? AND phoneNumber is null;
 	`;
@@ -70,7 +69,6 @@ app.post("/identify", async (req: Request, res: Response) => {
 		return
 
 	} else if (phoneNumber && !email) {
-		console.log('4');
 		const sql = `
 	  SELECT * FROM users WHERE phoneNumber = ? AND email is null;
 	`;
@@ -83,39 +81,55 @@ app.post("/identify", async (req: Request, res: Response) => {
 		res.status(200).send(data);
 		return
 	}
-
-	// 	let sql = `
-	//     INSERT INTO users (phoneNumber, email, linkPrecedence, createdAt)
-	//     VALUES (?, ?, ?, NOW())
-	//   `;
-
-	// 	try {
-	// 		const [result] = await connection.execute(sql, [
-	// 			phoneNumber,
-	// 			email,
-	// 			linkPrecedence,
-	// 		]);
-	// 		console.log("Inserted user with ID:", result);
-	// 		res.status(201).send({ phoneNumber, email, linkPrecedence });
-
-	// 		sql = `
-	//       SELECT * FROM users
-	//     `;
-
-	// 		const [rows] = await connection.execute(sql);
-	// 		console.log("All users:", rows);
-	// 	} catch (error) {
-	// 		console.error("Error inserting user:", error);
-	// 		res.status(500).send("Error inserting user");
-	// 	}
 });
+
+async function fetchByEmailPhoneNum(email: string, phoneNumber: string) {
+	const sql = `SELECT * FROM users WHERE email = ? OR phoneNumber = ?;`;
+	const [rows] = await connection.execute<Contact[]>(sql, [email, phoneNumber]);
+
+	if (!rows.length) {
+		const sql = `INSERT INTO users (email, phoneNumber, linkPrecedence, createdAt, updatedAt) VALUES (?, ?, ?, NOW(), NOW());`;
+		await connection.execute(sql, [email, phoneNumber, precedencePrimary]);
+		console.log("new data inserted without adding linkedid");
+	} else {
+		if (rows.length > 1) {
+			const sql = `
+				(
+					SELECT * FROM users WHERE linkPrecedence = ? AND phoneNumber = ? ORDER BY id ASC LIMIT 1
+				)
+				UNION
+				(
+					SELECT * FROM users WHERE linkPrecedence = ? AND email = ? ORDER BY id ASC LIMIT 1
+				)
+				ORDER BY id ASC;
+				`;
+			const params = [precedencePrimary, phoneNumber, precedencePrimary, email];
+
+			console.log("Executing SQL:", sql);
+			console.log("With parameters:", params);
+
+			const [rows] = await connection.execute<Contact[]>(sql, params);
+			console.log(rows);
+			if (rows.length > 1) {
+				const updateSql = `UPDATE users SET linkedId = ?, linkPrecedence = ? WHERE id = ?;`;
+				await connection.execute(updateSql, [rows[0].id, precedenceSecondary, rows[1].id]);
+			}
+
+			return;
+		}
+		const primaryContact = await fetchPrimaryContact(email, phoneNumber);
+		const sql = `INSERT INTO users (email, phoneNumber, linkedId, linkPrecedence, createdAt, updatedAt) VALUES (?, ?, ?, ?, NOW(), NOW());`;
+		await connection.execute(sql, [email, phoneNumber, primaryContact[0].id, precedenceSecondary]);
+		console.log("new data inserted with linedid");
+	}
+}
 
 async function fetchPrimaryContact(email?: string, phoneNumber?: string) {
 	try {
 		const sql = `
-	  SELECT * FROM users WHERE linkPrecedence = ? AND (email = ? OR phoneNumber = ?);
+	  SELECT * FROM users WHERE email = ? OR phoneNumber = ? ORDER BY id ASC;
 	`;
-		const params: any[] = ['primary'];
+		const params: any[] = [];
 		if (email) {
 			params.push(email);
 		} else {
@@ -127,6 +141,12 @@ async function fetchPrimaryContact(email?: string, phoneNumber?: string) {
 			params.push(null);
 		}
 		const [rows] = await connection.execute<Contact[]>(sql, params);
+
+		if (rows.length && rows[0].linkPrecedence != precedencePrimary) {
+			const sql = `SELECT * FROM users WHERE id = ?;`
+			const [data] = await connection.execute<Contact[]>(sql, [rows[0].linkedId]);
+			return data;
+		}
 		console.log("Executing SQL:", sql);
 		console.log("With parameters:", params);
 		console.log("rows:", rows);
@@ -160,17 +180,18 @@ async function fetchByEmail(email: string) {
 		await connection.execute(sql, [email, precedencePrimary,]);
 
 		console.log("new data inserted without adding linkedid");
-	} else {
-		const primaryContact = await fetchPrimaryContact(email);
-		const sql = `
-	  INSERT INTO users (email, linkedId, linkPrecedence, createdAt, updatedAt)
-	  VALUES (?, ?, NOW(), NOW());
-	`;
-
-		await connection.execute(sql, [email, primaryContact[0].id, precedenceSecondary,]);
-
-		console.log("new data inserted with linedid");
 	}
+	// else {
+	// 	const primaryContact = await fetchPrimaryContact(email);
+	// 	const sql = `
+	//   INSERT INTO users (email, linkedId, linkPrecedence, createdAt, updatedAt)
+	//   VALUES (?, ?, NOW(), NOW());
+	// `;
+
+	// 	await connection.execute(sql, [email, primaryContact[0].id, precedenceSecondary,]);
+
+	// 	console.log("new data inserted with linedid");
+	// }
 }
 
 async function fetchByPhonenumber(phoneNumber: string) {
@@ -188,21 +209,21 @@ async function fetchByPhonenumber(phoneNumber: string) {
 		await connection.execute(sql, [phoneNumber, precedencePrimary,]);
 
 		console.log("new data inserted without adding linkedid");
-	} else {
-		const primaryContact = await fetchPrimaryContact('', phoneNumber);
-
-		
-		const sql = `
-	  INSERT INTO users (phoneNumber, linkedId, linkPrecedence, createdAt, updatedAt)
-	  VALUES (?, ?, ?, NOW(), NOW());
-	`;
-
-		await connection.execute(sql, [phoneNumber, primaryContact[0].id, precedenceSecondary,]);
-
-		console.log("new data inserted with linedid");
 	}
-}
+	// else {
+	// 	const primaryContact = await fetchPrimaryContact('', phoneNumber);
 
+
+	// 	const sql = `
+	//   INSERT INTO users (phoneNumber, linkedId, linkPrecedence, createdAt, updatedAt)
+	//   VALUES (?, ?, ?, NOW(), NOW());
+	// `;
+
+	// 	await connection.execute(sql, [phoneNumber, primaryContact[0].id, precedenceSecondary,]);
+
+	// 	console.log("new data inserted with linedid");
+	// }
+}
 
 function formatResponse(primaryContact: any[], secondaryContacts: any[]) {
 	// Create a Set for emails and phoneNumbers to eliminate duplicates
@@ -244,6 +265,7 @@ function formatResponse(primaryContact: any[], secondaryContacts: any[]) {
 async function fetchUsers(email?: string, phoneNumber?: string) {
 	let primaryData = await fetchPrimaryContact(email, phoneNumber);
 	console.log("primaryData:", primaryData);
+
 	let secondaryData = await fetchSecondaryContact(primaryData[0].id);
 	console.log("secondaryData:", secondaryData);
 
