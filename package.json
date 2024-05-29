@@ -1,10 +1,10 @@
 {
   "name": "bitespeed",
   "version": "1.0.0",
-  "main": "index.js",
-  "start": "",
+  "main": "dist/server.js",
   "scripts": {
-    "start": "ts-node-dev src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
     "postbuild": "npm install"
   },
   "keywords": [],
@@ -21,7 +21,9 @@
     "mysql": "^2.18.1",
     "mysql2": "^3.9.7",
     "typescript": "^5.4.5",
-    "ts-node-dev": "^2.0.0"
+    "ts-node-dev": "^2.0.0",
+    "ts-node": "^10.9.2"
+
   },
   "devDependencies": {
     "nodemon": "^3.1.0",

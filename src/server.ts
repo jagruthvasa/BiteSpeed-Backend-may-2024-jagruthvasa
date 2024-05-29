@@ -181,17 +181,6 @@ async function fetchByEmail(email: string) {
 
 		console.log("new data inserted without adding linkedid");
 	}
-	// else {
-	// 	const primaryContact = await fetchPrimaryContact(email);
-	// 	const sql = `
-	//   INSERT INTO users (email, linkedId, linkPrecedence, createdAt, updatedAt)
-	//   VALUES (?, ?, NOW(), NOW());
-	// `;
-
-	// 	await connection.execute(sql, [email, primaryContact[0].id, precedenceSecondary,]);
-
-	// 	console.log("new data inserted with linedid");
-	// }
 }
 
 async function fetchByPhonenumber(phoneNumber: string) {
@@ -210,19 +199,6 @@ async function fetchByPhonenumber(phoneNumber: string) {
 
 		console.log("new data inserted without adding linkedid");
 	}
-	// else {
-	// 	const primaryContact = await fetchPrimaryContact('', phoneNumber);
-
-
-	// 	const sql = `
-	//   INSERT INTO users (phoneNumber, linkedId, linkPrecedence, createdAt, updatedAt)
-	//   VALUES (?, ?, ?, NOW(), NOW());
-	// `;
-
-	// 	await connection.execute(sql, [phoneNumber, primaryContact[0].id, precedenceSecondary,]);
-
-	// 	console.log("new data inserted with linedid");
-	// }
 }
 
 function formatResponse(primaryContact: any[], secondaryContacts: any[]) {
@@ -296,5 +272,5 @@ app.get("/", (req: Request, res: Response) => {
 
 app.listen(process.env.PORT || PORT, () => {
 	console.log(`Server is running on port ${PORT}`);
-	// initializeDatabase();
+	initializeDatabase();
 });
