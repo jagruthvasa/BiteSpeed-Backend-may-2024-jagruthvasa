@@ -272,5 +272,5 @@ app.get("/", (req: Request, res: Response) => {
 
 app.listen(process.env.PORT || PORT, () => {
 	console.log(`Server is running on port ${PORT}`);
-	initializeDatabase();
+	// initializeDatabase();
 });
