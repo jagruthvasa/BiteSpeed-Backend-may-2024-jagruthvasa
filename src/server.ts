@@ -98,24 +98,31 @@ async function fetchByEmailPhoneNum(email: string, phoneNumber: string) {
 		if (rows.length > 1) {
 			const sql = `
 				(
-					SELECT * FROM users WHERE linkPrecedence = ? AND phoneNumber = ? ORDER BY id ASC LIMIT 1
+					SELECT * FROM users WHERE phoneNumber = ? ORDER BY id ASC LIMIT 1
 				)
 				UNION
 				(
-					SELECT * FROM users WHERE linkPrecedence = ? AND email = ? ORDER BY id ASC LIMIT 1
+					SELECT * FROM users WHERE email = ? ORDER BY id ASC LIMIT 1
 				)
 				ORDER BY id ASC;
 				`;
-			const params = [precedencePrimary, phoneNumber, precedencePrimary, email];
+			const params = [phoneNumber, email];
 
 			console.log("Executing SQL:", sql);
-			console.log("With parameters:", params);
+			console.log("With parameterssss:", params);
 
 			const [rows] = await connection.execute<Contact[]>(sql, params);
-			console.log(rows);
+			console.log("rows after", rows);
 			if (rows.length > 1) {
-				const updateSql = `UPDATE users SET linkedId = ?, linkPrecedence = ? WHERE id = ?;`;
-				await connection.execute(updateSql, [rows[0].id, precedenceSecondary, rows[1].id]);
+				if (rows[0].linkPrecedence == precedencePrimary && rows[1].linkPrecedence == precedencePrimary) {
+					await handleByPrimary(rows[0].id, rows[1].id);
+				} else if (rows[0].linkPrecedence == precedencePrimary && rows[1].linkPrecedence == precedenceSecondary) {
+					await handleByPrimary(rows[0].id, rows[1].linkedId);
+				} else if (rows[0].linkPrecedence == precedenceSecondary && rows[1].linkPrecedence == precedencePrimary) {
+					await handleByPrimary(rows[0].linkedId, rows[1].id)
+				} else if (rows[0].linkPrecedence == precedenceSecondary && rows[1].linkPrecedence == precedenceSecondary) {
+					await handleByPrimary(rows[0].linkedId, rows[1].linkedId);
+				}
 			}
 
 			return;
@@ -126,6 +133,28 @@ async function fetchByEmailPhoneNum(email: string, phoneNumber: string) {
 		console.log("new data inserted with linedid");
 	}
 }
+
+async function handleByPrimary(firstId?: number | null, secondId?: number | null) {
+	if (!firstId || !secondId) {
+		throw new Error("Both firstId and secondId must be provided");
+	}
+
+	const fetchIdSql = `SELECT id FROM users WHERE linkedId = ?;`;
+	const [rows] = await connection.execute<Contact[]>(fetchIdSql, [secondId]);
+
+	console.log("primaryId:", firstId, "secondaryId:", secondId);
+
+	let ids: number[] = rows.map(row => row.id);
+	ids.push(secondId);
+
+	console.log("ids:", ids);
+
+	const idsString = ids.join(',');
+
+	const updateSql = `UPDATE users SET linkedId = ?, linkPrecedence = ? WHERE id IN (${idsString});`;
+	await connection.execute(updateSql, [firstId, precedenceSecondary]);
+}
+
 
 async function fetchPrimaryContact(email?: string, phoneNumber?: string) {
 	try {
